@@ -3,7 +3,6 @@
 
 # In[1]:
 
-
 import numpy as np
 import imutils
 import time
@@ -21,50 +20,6 @@ import make_train_data as mtd
 import light_remover as lr
 import ringing_alarm as alarm
 
-def eye_aspect_ratio(eye) :
-    A = dist.euclidean(eye[1], eye[5])
-    B = dist.euclidean(eye[2], eye[4])
-    C = dist.euclidean(eye[0], eye[3])
-    ear = (A + B) / (2.0 * C)
-    return ear
-    
-def init_open_ear() :
-    time.sleep(5)
-    print("open init time sleep")
-    ear_list = []
-    th_message1 = Thread(target = init_message)
-    th_message1.deamon = True
-    th_message1.start()
-    for i in range(7) :
-        ear_list.append(both_ear)
-        time.sleep(1)
-    global OPEN_EAR
-    OPEN_EAR = sum(ear_list) / len(ear_list)
-    print("open list =", ear_list, "\nOPEN_EAR =", OPEN_EAR, "\n")
-
-def init_close_ear() : 
-    time.sleep(2)
-    th_open.join()
-    time.sleep(5)
-    print("close init time sleep")
-    ear_list = []
-    th_message2 = Thread(target = init_message)
-    th_message2.deamon = True
-    th_message2.start()
-    time.sleep(1)
-    for i in range(7) :
-        ear_list.append(both_ear)
-        time.sleep(1)
-    CLOSE_EAR = sum(ear_list) / len(ear_list)
-    global EAR_THRESH
-    EAR_THRESH = (((OPEN_EAR - CLOSE_EAR) / 2) + CLOSE_EAR) #EAR_THRESH means 50% of the being opened eyes state
-    print("close list =", ear_list, "\nCLOSE_EAR =", CLOSE_EAR, "\n")
-    print("The last EAR_THRESH's value :",EAR_THRESH, "\n")
-
-def init_message() :
-    print("init_message")
-    alarm.sound_alarm("init_sound.mp3")
-
 #####################################################################################################################
 #1. Variables for checking EAR.
 #2. Variables for detecting if user is asleep.
@@ -77,8 +32,15 @@ def init_message() :
 #9. Threads to run the functions in which determine the EAR_THRESH. 
 
 #1.
-OPEN_EAR = 0 #For init_open_ear()
+OPEN_EAR = -1 #For init_open_ear()
+CLOSE_EAR = 9999 #For init_open_ear()
 EAR_THRESH = 0 #Threashold value
+cv_file = cv2.FileStorage("calibration.xml", cv2.FILE_STORAGE_READ)
+if cv_file.isOpened():
+    OPEN_EAR = cv_file.getNode("OPEN_EAR").real()
+    CLOSE_EAR = cv_file.getNode("CLOSE_EAR").real()
+    EAR_THRESH = cv_file.getNode("EAR_THRESH").real()
+    cv_file.release()
 
 #2.
 #It doesn't matter what you use instead of a consecutive frame to check out drowsiness state. (ex. timer)
@@ -107,6 +69,59 @@ result_data = []
 #For calculate fps
 prev_time = 0
 
+def eye_aspect_ratio(eye) :
+    A = dist.euclidean(eye[1], eye[5])
+    B = dist.euclidean(eye[2], eye[4])
+    C = dist.euclidean(eye[0], eye[3])
+    ear = (A + B) / (2.0 * C)
+    return ear
+    
+def init_open_ear() :
+    time.sleep(5)
+    print("open init time sleep")
+    ear_list_o = []
+    th_message1 = Thread(target = init_message)
+    th_message1.deamon = True
+    th_message1.start()
+    global OPEN_EAR
+
+    for i in range(7) :
+        if both_ear >  OPEN_EAR:
+            ear_list_o.append(both_ear)
+        time.sleep(1)
+        
+    OPEN_EAR = sum(ear_list_o) / len(ear_list_o)
+    print("open list =", ear_list_o, "\nOPEN_EAR =", OPEN_EAR, "\n")
+    cv_file.write("OPEN_EAR", OPEN_EAR)
+
+def init_close_ear() : 
+    time.sleep(2)
+    th_open.join()
+    time.sleep(5)
+    print("close init time sleep")
+    ear_list = []
+    th_message2 = Thread(target = init_message)
+    th_message2.deamon = True
+    th_message2.start()
+    time.sleep(1)
+    global CLOSE_EAR
+    for i in range(7) :
+        if both_ear <  CLOSE_EAR:
+            ear_list.append(both_ear)
+        time.sleep(1)
+    CLOSE_EAR = sum(ear_list) / len(ear_list)
+    cv_file.write("CLOSE_EAR", CLOSE_EAR)
+    global EAR_THRESH
+    EAR_THRESH = (((OPEN_EAR - CLOSE_EAR) / 2) + CLOSE_EAR) #EAR_THRESH means 50% of the being opened eyes state
+    print("close list =", ear_list, "\nCLOSE_EAR =", CLOSE_EAR, "\n")
+    print("The last EAR_THRESH's value :",EAR_THRESH, "\n")
+    cv_file.write("EAR_THRESH", EAR_THRESH)
+    cv_file.release()
+
+def init_message() :
+    print("init_message")
+    alarm.sound_alarm("init_sound.mp3")
+
 #7. 
 print("loading facial landmark predictor...")
 detector = dlib.get_frontal_face_detector()
@@ -121,12 +136,18 @@ vs = VideoStream(src=0).start()
 time.sleep(1.0)
 
 #9.
-th_open = Thread(target = init_open_ear)
-th_open.deamon = True
-th_open.start()
-th_close = Thread(target = init_close_ear)
-th_close.deamon = True
-th_close.start()
+global th_open
+global th_close
+isCalibration = False
+if OPEN_EAR < 0:    
+    isCalibration = True
+    cv_file = cv2.FileStorage("calibration.xml", cv2.FILE_STORAGE_WRITE)
+    th_open = Thread(target = init_open_ear)
+    th_open.deamon = True
+    th_open.start()
+    th_close = Thread(target = init_close_ear)
+    th_close.deamon = True
+    th_close.start()
 
 #####################################################################################################################
 
@@ -211,9 +232,23 @@ while True:
                     print("The time eyes were being offed :", closed_eyes_time)
 
                 ALARM_FLAG = False
+  
+    cv2.putText(frame, "EAR : {:.2f}".format(both_ear), (290,130), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (30,200,20), 1)   
+    cv2.putText(frame, "OPEN_EAR : {:.2f}".format(OPEN_EAR), (290,150), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (20,30,200), 1)  
+    cv2.putText(frame, "CLOSE_EAR : {:.2f}".format(CLOSE_EAR), (290,170), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200,30,20), 1)    
 
-            cv2.putText(frame, "EAR : {:.2f}".format(both_ear), (300,130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,30,20), 2)
-            
+    if isCalibration and th_open.is_alive():
+        cv2.putText(frame, "OPEN YOUR EYE (BLINK IS OK BUT LIMITED)", (90,20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (20,200,20), 1)    
+
+    if isCalibration and th_close.is_alive() and not th_open.is_alive():
+        cv2.putText(frame, "PLEASE CLOSE YOUR EYE UNTIL RAIN SOUND STOP!", (70,20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (20,200,20), 1)    
+
+    #icon of speaker
+    #U+1F508
+    
+    cv2.putText(frame, "((SPEAKER ON))", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (20,200,20), 1)    
+
+
     cv2.imshow("Frame",frame)
     key = cv2.waitKey(1) & 0xFF
 
