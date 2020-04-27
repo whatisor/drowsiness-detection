@@ -186,8 +186,10 @@ Get face images from the camera -> Grayscaling -> Light processing -> HOG & find
 
   
 ## Execution
-+ I run drowsiness_detector.ipynb just typing CTRL+ENTER.
-+ 전 jupyter notebook을 사용했기 때문에 일단 업로드 해두었습니다. 파이썬으로 실행하셔도 됩니다.
++ pip install requirements.txt
++ python drowsiness_detector.py
++ Remove calibration.yml if want to re-calibrate
+
   
 ## References
 + [Machine Learning is Fun! Part 4: Modern Face Recognition with Deep Learning](https://medium.com/@ageitgey/machine-learning-is-fun-part-4-modern-face-recognition-with-deep-learning-c3cffc121d78)
