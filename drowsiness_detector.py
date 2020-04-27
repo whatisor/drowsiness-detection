@@ -137,75 +137,83 @@ while True:
     L, gray = lr.light_removing(frame)
     
     rects = detector(gray,0)
-    
-    #checking fps. If you want to check fps, just uncomment below two lines.
-    #prev_time, fps = check_fps(prev_time)
-    #cv2.putText(frame, "fps : {:.2f}".format(fps), (10,130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,30,20), 2)
 
-    for rect in rects:
-        shape = predictor(gray, rect)
-        shape = face_utils.shape_to_np(shape)
-
-        leftEye = shape[lStart:lEnd]
-        rightEye = shape[rStart:rEnd]
-        leftEAR = eye_aspect_ratio(leftEye)
-        rightEAR = eye_aspect_ratio(rightEye)
-
-        #(leftEAR + rightEAR) / 2 => both_ear. 
-        both_ear = (leftEAR + rightEAR) * 500  #I multiplied by 1000 to enlarge the scope.
-
-        leftEyeHull = cv2.convexHull(leftEye)
-        rightEyeHull = cv2.convexHull(rightEye)
-        cv2.drawContours(frame, [leftEyeHull], -1, (0,255,0), 1)
-        cv2.drawContours(frame, [rightEyeHull], -1, (0,255,0), 1)
+    if len(rects) > 0:
+        #only get main face
+        mainFace = rects[0]
+        for rect in rects:
+            if mainFace.area() < rect.area():
+                mainFace = rect
         
+        #checking fps. If you want to check fps, just uncomment below two lines.
+        #prev_time, fps = check_fps(prev_time)
+        #cv2.putText(frame, "fps : {:.2f}".format(fps), (10,130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,30,20), 2)
 
-        if both_ear < EAR_THRESH :
-            if not TIMER_FLAG:
-                start_closing = timeit.default_timer()
-                TIMER_FLAG = True
-            COUNTER += 1
+        rects = [mainFace]
+        for rect in rects:
+            shape = predictor(gray, rect)
+            shape = face_utils.shape_to_np(shape)
 
-            if COUNTER >= EAR_CONSEC_FRAMES:
+            leftEye = shape[lStart:lEnd]
+            rightEye = shape[rStart:rEnd]
+            leftEAR = eye_aspect_ratio(leftEye)
+            rightEAR = eye_aspect_ratio(rightEye)
 
-                mid_closing = timeit.default_timer()
-                closing_time = round((mid_closing-start_closing),3)
+            #(leftEAR + rightEAR) / 2 => both_ear. 
+            both_ear = (leftEAR + rightEAR) * 500  #I multiplied by 1000 to enlarge the scope.
 
-                if closing_time >= RUNNING_TIME:
-                    if RUNNING_TIME == 0 :
-                        CUR_TERM = timeit.default_timer()
-                        OPENED_EYES_TIME = round((CUR_TERM - PREV_TERM),3)
-                        PREV_TERM = CUR_TERM
-                        RUNNING_TIME = 1.75
+            leftEyeHull = cv2.convexHull(leftEye)
+            rightEyeHull = cv2.convexHull(rightEye)
+            cv2.drawContours(frame, [leftEyeHull], -1, (0,255,0), 1)
+            cv2.drawContours(frame, [rightEyeHull], -1, (0,255,0), 1)
+            
 
-                    RUNNING_TIME += 2
-                    ALARM_FLAG = True
-                    ALARM_COUNT += 1
+            if both_ear < EAR_THRESH :
+                if not TIMER_FLAG:
+                    start_closing = timeit.default_timer()
+                    TIMER_FLAG = True
+                COUNTER += 1
 
-                    print("{0}st ALARM".format(ALARM_COUNT))
-                    print("The time eyes is being opened before the alarm went off :", OPENED_EYES_TIME)
-                    print("closing time :", closing_time)
-                    test_data.append([OPENED_EYES_TIME, round(closing_time*10,3)])
-                    result = mtd.run([OPENED_EYES_TIME, closing_time*10], power, nomal, short)
-                    result_data.append(result)
-                    t = Thread(target = alarm.select_alarm, args = (result, ))
-                    t.deamon = True
-                    t.start()
+                if COUNTER >= EAR_CONSEC_FRAMES:
 
-        else :
-            COUNTER = 0
-            TIMER_FLAG = False
-            RUNNING_TIME = 0
+                    mid_closing = timeit.default_timer()
+                    closing_time = round((mid_closing-start_closing),3)
 
-            if ALARM_FLAG :
-                end_closing = timeit.default_timer()
-                closed_eyes_time.append(round((end_closing-start_closing),3))
-                print("The time eyes were being offed :", closed_eyes_time)
+                    if closing_time >= RUNNING_TIME:
+                        if RUNNING_TIME == 0 :
+                            CUR_TERM = timeit.default_timer()
+                            OPENED_EYES_TIME = round((CUR_TERM - PREV_TERM),3)
+                            PREV_TERM = CUR_TERM
+                            RUNNING_TIME = 1.75
 
-            ALARM_FLAG = False
+                        RUNNING_TIME += 2
+                        ALARM_FLAG = True
+                        ALARM_COUNT += 1
 
-        cv2.putText(frame, "EAR : {:.2f}".format(both_ear), (300,130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,30,20), 2)
+                        print("{0}st ALARM".format(ALARM_COUNT))
+                        print("The time eyes is being opened before the alarm went off :", OPENED_EYES_TIME)
+                        print("closing time :", closing_time)
+                        test_data.append([OPENED_EYES_TIME, round(closing_time*10,3)])
+                        result = mtd.run([OPENED_EYES_TIME, closing_time*10], power, nomal, short)
+                        result_data.append(result)
+                        t = Thread(target = alarm.select_alarm, args = (result, ))
+                        t.deamon = True
+                        t.start()
 
+            else :
+                COUNTER = 0
+                TIMER_FLAG = False
+                RUNNING_TIME = 0
+
+                if ALARM_FLAG :
+                    end_closing = timeit.default_timer()
+                    closed_eyes_time.append(round((end_closing-start_closing),3))
+                    print("The time eyes were being offed :", closed_eyes_time)
+
+                ALARM_FLAG = False
+
+            cv2.putText(frame, "EAR : {:.2f}".format(both_ear), (300,130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,30,20), 2)
+            
     cv2.imshow("Frame",frame)
     key = cv2.waitKey(1) & 0xFF
 
